@@ -89,19 +89,25 @@ def ask(prompt, required=True, secret=False):
 
 def write_config():
     cprint("\n--- Configuration ---", Fore.MAGENTA)
-    cprint("You need a Discord user token and a Groq API key.", Fore.WHITE)
+    cprint("You need a Discord user token and an AI API key.", Fore.WHITE)
+    cprint("Provide either a Groq key OR a Gemini key (or both — Gemini takes priority).", Fore.WHITE)
     cprint("DeAPI key is optional (image generation).", Fore.WHITE)
     print()
 
     token = ask("Discord user token: ", required=True, secret=True)
-    groq = ask("Groq API key: ", required=True, secret=True)
+    groq  = ask("Groq API key (leave empty to use Gemini only): ", required=False, secret=True)
+    gemini = ask("Gemini API key (leave empty to use Groq only): ", required=False, secret=True)
+    if not groq and not gemini:
+        cprint("At least one AI key (Groq or Gemini) is required.", Fore.RED)
+        sys.exit(1)
     deapi = ask("DeAPI key (leave empty to skip): ", required=False, secret=True)
 
     root = os.path.dirname(os.path.abspath(__file__))
     cfg_path = os.path.join(root, "config.json")
     data = {
         "TOKEN": token,
-        "GROQ_API_KEY": groq,
+        "GROQ_API_KEY": groq or "",
+        "GEMINI_API_KEY": gemini or "",
         "DEAPI_KEY": deapi or "",
     }
     with open(cfg_path, "w", encoding="utf-8") as f:
