@@ -8,6 +8,7 @@ RELEASE_DATE = "18/08/2026"
 
 MODEL = "openai/gpt-oss-20b"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 DEAPI_GEN_URL = "https://api.deapi.ai/api/v2/images/generations"
 DEAPI_JOB_URL = "https://api.deapi.ai/api/v2/jobs/{}"

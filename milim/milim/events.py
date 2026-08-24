@@ -5,7 +5,7 @@ from milim.constants import (
 )
 from milim.permissions import is_blacklisted, get_sorted_role_names
 from milim import personas
-from milim.ai import call_groq, build_chat_messages, process_response
+from milim.ai import call_ai, build_chat_messages, process_response
 from milim.commands import admin, fun, utility, persona, image, custom, moder
 from milim import shell
 from milim.bot import terminal_listener
@@ -22,29 +22,37 @@ async def send_response(original_message, text):
         text = "Message too long."
     sent_ids = []
     msgs = []
-    if len(text) <= 1990:
-        reply = await original_message.reply(text)
-        sent_ids.append(reply.id)
-        msgs.append(reply)
-    else:
-        parts = []
-        remaining = text
-        while len(remaining) > 1990:
-            sp = remaining.rfind("\n", 0, 1990)
-            if sp == -1:
-                sp = 1990
-            parts.append(remaining[:sp])
-            remaining = remaining[sp:].strip()
-        parts.append(remaining)
-        for i, p in enumerate(parts):
-            if i == 0:
-                reply = await original_message.reply(p)
-                sent_ids.append(reply.id)
-                msgs.append(reply)
-            else:
-                msg = await original_message.channel.send(p)
-                sent_ids.append(msg.id)
-                msgs.append(msg)
+    try:
+        if len(text) <= 1990:
+            reply = await original_message.reply(text)
+            sent_ids.append(reply.id)
+            msgs.append(reply)
+        else:
+            parts = []
+            remaining = text
+            while len(remaining) > 1990:
+                sp = remaining.rfind("\n", 0, 1990)
+                if sp == -1:
+                    sp = 1990
+                parts.append(remaining[:sp])
+                remaining = remaining[sp:].strip()
+            parts.append(remaining)
+            for i, p in enumerate(parts):
+                if i == 0:
+                    reply = await original_message.reply(p)
+                    sent_ids.append(reply.id)
+                    msgs.append(reply)
+                else:
+                    msg = await original_message.channel.send(p)
+                    sent_ids.append(msg.id)
+                    msgs.append(msg)
+    except discord.NotFound:
+        # The message was deleted before we could reply — silently drop it
+        return []
+    except discord.Forbidden:
+        return []
+    except Exception:
+        return []
     if personas.persona_mode == "18+":
         for m in msgs:
             asyncio.create_task(auto_delete_later(m, 10))
@@ -74,6 +82,11 @@ def register(client, state, memory, sent_replies):
         except Exception:
             pass
         asyncio.create_task(terminal_listener())
+        try:
+            from milim import dashboard
+            dashboard.start(state, client, version=BOT_VERSION)
+        except Exception as e:
+            print(f"Dashboard failed to start: {e}")
 
     @client.event
     async def on_message(message):
@@ -212,17 +225,20 @@ def register(client, state, memory, sent_replies):
         msgs = build_chat_messages(user_id, full_user_content, memory)
 
         async with message.channel.typing():
-            resp, last_error = await call_groq(msgs)
+            resp, last_error = await call_ai(msgs)
             if resp is None:
-                if last_error == "rate_limit":
-                    err = await message.reply("i'm being spammed rn, give me a sec and try again 😭")
-                elif last_error and last_error.startswith("server_"):
-                    err = await message.reply("groq's servers are having a moment, try again in a bit")
-                elif last_error == "timeout":
-                    err = await message.reply("took too long to respond, try again")
-                else:
-                    err = await message.reply("something went wrong on my end, try again")
-                sent_replies[message.id] = [err.id]
+                try:
+                    if last_error == "rate_limit":
+                        err = await message.reply("i'm being spammed rn, give me a sec and try again 😭")
+                    elif last_error and last_error.startswith("server_"):
+                        err = await message.reply("groq's servers are having a moment, try again in a bit")
+                    elif last_error == "timeout":
+                        err = await message.reply("took too long to respond, try again")
+                    else:
+                        err = await message.reply("something went wrong on my end, try again")
+                    sent_replies[message.id] = [err.id]
+                except (discord.NotFound, discord.Forbidden, Exception):
+                    pass
                 return
             try:
                 resp, react_emojis = process_response(resp)
@@ -236,8 +252,11 @@ def register(client, state, memory, sent_replies):
                     sent_replies[message.id] = sent_ids
             except Exception as e:
                 print(f"post-processing error: {e}")
-                err = await message.reply("got a response but something broke processing it, try again")
-                sent_replies[message.id] = [err.id]
+                try:
+                    err = await message.reply("got a response but something broke processing it, try again")
+                    sent_replies[message.id] = [err.id]
+                except (discord.NotFound, discord.Forbidden, Exception):
+                    pass
 
     @client.event
     async def on_message_edit(before, after):

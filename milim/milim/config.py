@@ -30,6 +30,9 @@ def groq_key():
 def deapi_key():
     return get("DEAPI_KEY")
 
+def gemini_key():
+    return get("GEMINI_API_KEY")
+
 def data_dir():
     d = os.path.join(_ROOT, "data")
     os.makedirs(d, exist_ok=True)
