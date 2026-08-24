@@ -40,3 +40,20 @@ def data_dir():
 
 def path(*parts):
     return os.path.join(data_dir(), *parts)
+
+
+def model(default=""):
+    """Return the active model name stored in config, or empty string if not set."""
+    return get("MODEL", default)
+
+def set_model(name: str):
+    """Persist the model name to config.json."""
+    import json as _json
+    if not os.path.exists(_CFG_PATH):
+        return
+    with open(_CFG_PATH, "r", encoding="utf-8") as f:
+        data = _json.load(f)
+    data["MODEL"] = name
+    with open(_CFG_PATH, "w", encoding="utf-8") as f:
+        _json.dump(data, f, indent=2)
+    _data["MODEL"] = name

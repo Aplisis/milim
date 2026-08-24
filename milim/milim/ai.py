@@ -1,7 +1,7 @@
 import asyncio
 import aiohttp
 from milim import config
-from milim.constants import MODEL, GROQ_API_URL, GEMINI_API_URL
+from milim.constants import MODEL as _DEFAULT_MODEL, GROQ_API_URL, GEMINI_API_URL
 from milim.personas import get_system_prompt
 from milim.memory import get_memory_injection
 from milim.utils.text import filter_banned_words, contains_number_list, extract_reactions
@@ -19,7 +19,7 @@ def get_provider() -> str:
 async def call_groq(messages, temperature=0.9, max_tokens=400):
     payload = {
         "messages": messages,
-        "model": MODEL,
+        "model": config.model(_DEFAULT_MODEL) or _DEFAULT_MODEL,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "top_p": 0.95,
@@ -108,7 +108,9 @@ async def call_gemini(messages, temperature=0.9, max_tokens=400):
     if system_text:
         payload["systemInstruction"] = {"parts": [{"text": system_text}]}
 
-    url = f"{GEMINI_API_URL}?key={key}"
+    _gem_model = config.model("gemini-2.0-flash")
+    _gem_url = f"https://generativelanguage.googleapis.com/v1beta/models/{_gem_model}:generateContent"
+    url = f"{_gem_url}?key={key}"
     last_error = None
 
     for attempt in range(3):

@@ -167,12 +167,19 @@ def api_config():
         # mask token after first 10 chars
         token = raw.get("TOKEN", "")
         masked = token[:10] + "•" * max(0, len(token) - 10) if token else ""
+        try:
+            from milim.constants import _DEFAULT_MODEL
+            default_model = _DEFAULT_MODEL
+        except ImportError:
+            default_model = "openai/gpt-oss-20b"
+        current_model = raw.get("MODEL", "") or default_model
         return jsonify({
             "token_masked": masked,
             "groq_key_set": bool(raw.get("GROQ_API_KEY")),
             "gemini_key_set": bool(raw.get("GEMINI_API_KEY")),
             "deapi_key_set": bool(raw.get("DEAPI_KEY")),
             "active_provider": "gemini" if raw.get("GEMINI_API_KEY") else "groq",
+            "current_model": current_model,
         })
     data = request.get_json(force=True)
     raw = _read_cfg_raw()
@@ -192,6 +199,14 @@ def api_config():
     if "deapi_key" in data and data["deapi_key"].strip():
         raw["DEAPI_KEY"] = data["deapi_key"].strip()
         changed.append("DEAPI_KEY")
+    if "model" in data and data["model"].strip():
+        raw["MODEL"] = data["model"].strip()
+        changed.append("MODEL")
+        try:
+            from milim import config as _cfg
+            _cfg._data["MODEL"] = data["model"].strip()
+        except Exception:
+            pass
     _write_cfg_raw(raw)
     log(f"Config updated: {', '.join(changed)}")
     return jsonify({"ok": True, "changed": changed})
@@ -694,12 +709,25 @@ select option{background:var(--surface2)}
             <label>DeAPI key <span style="color:var(--muted)">(optional — image generation)</span></label>
             <input type="password" id="cfg-deapi" placeholder="Leave blank to keep current"/>
           </div>
+          <div style="height:1px;background:var(--border);margin:4px 0"></div>
+          <div class="cfg-field">
+            <label>AI model <span style="color:var(--muted)">— write the exact model name</span></label>
+            <div style="display:flex;gap:7px;align-items:center">
+              <input type="text" id="cfg-model" placeholder="e.g. gemini-2.0-flash or openai/gpt-oss-20b" style="flex:1;font-family:var(--mono)"/>
+              <button class="btn btn-primary" onclick="saveModel()">Apply</button>
+            </div>
+            <span style="font-size:11px;color:var(--muted)" id="cfg-model-hint"></span>
+            <div style="margin-top:6px;font-size:11px;color:var(--muted);line-height:1.6">
+              <b style="color:var(--text)">Groq examples:</b> <code style="font-family:var(--mono);color:var(--accent)">openai/gpt-oss-20b</code> &nbsp;·&nbsp; <code style="font-family:var(--mono);color:var(--accent)">llama-3.3-70b-versatile</code><br/>
+              <b style="color:var(--text)">Gemini examples:</b> <code style="font-family:var(--mono);color:var(--accent2)">gemini-2.0-flash</code> &nbsp;·&nbsp; <code style="font-family:var(--mono);color:var(--accent2)">gemini-1.5-pro</code>
+            </div>
+          </div>
           <div style="display:flex;gap:9px;flex-wrap:wrap;padding-top:4px">
             <button class="btn btn-primary" onclick="saveCfg()">Save credentials</button>
             <button class="btn btn-warn" onclick="restartBot()">⟳ Save & Restart bot</button>
           </div>
           <div style="font-size:11px;color:var(--muted)">
-            Restart applies new credentials. The dashboard stays alive during restart.
+            Model change is instant — no restart needed. Credentials require restart.
           </div>
         </div>
       </div>
@@ -995,6 +1023,19 @@ async function loadCfg() {
   const provEl = document.getElementById("cfg-provider");
   provEl.textContent = d.active_provider || "groq";
   provEl.style.color = d.active_provider === "gemini" ? "var(--accent2)" : "var(--accent)";
+  const hint = document.getElementById("cfg-model-hint");
+  hint.textContent = d.current_model ? "Active: " + d.current_model : "";
+  hint.style.color = d.active_provider === "gemini" ? "var(--accent2)" : "var(--accent)";
+}
+async function saveModel() {
+  const name = document.getElementById("cfg-model").value.trim();
+  if (!name) { toast("Enter a model name","warn"); return; }
+  const r = await api("/api/config", {method:"POST",body:JSON.stringify({model:name})});
+  if (r.ok) {
+    toast("Model set to " + name + " ✔");
+    document.getElementById("cfg-model").value = "";
+    loadCfg();
+  } else toast("Error","err");
 }
 async function saveCfg() {
   const token  = document.getElementById("cfg-token").value.trim();
@@ -1027,6 +1068,12 @@ async function restartBot() {
   await api("/api/restart", {method:"POST"});
   setTimeout(() => { pollStatus(); toast("Bot restarted","ok"); }, 3000);
 }
+
+// ── model input enter key ──────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  const mi = document.getElementById("cfg-model");
+  if (mi) mi.addEventListener("keydown", e => { if(e.key==="Enter") saveModel(); });
+});
 
 // ── utils ──────────────────────────────────────────────────────────────────────
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
